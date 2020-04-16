@@ -1,0 +1,101 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Transform: AWS::Serverless-2016-10-31
+
+Description: 'Allow slack messages to be sent via SNS topic'
+
+Resources:
+
+  BrainTrustApi:
+    Type: 'AWS::ApiGateway::RestApi'
+    Properties:
+      Description: Brain Trust API
+      Name: BrainTrustApi
+
+  ProxyResource:
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      RestApiId: !Ref BrainTrustApi
+      ParentId: !GetAtt BrainTrustApi.RootResourceId
+      PathPart: '{proxy+}'
+
+  ProxyResourceToLambda:
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      RestApiId: !Ref BrainTrustApi
+      ResourceId: !Ref ProxyResource
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub >-
+          arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FunctionJitsiSlackBot.Arn}/invocations
+
+  TopicSlack:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: "braintrust-slack"
+      Subscription:
+        - Endpoint: !GetAtt FunctionSendSlackMessage.Arn
+          Protocol: lambda
+  TopicPolicySlack:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            AWS:
+            - !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+          Action: sns:Publish
+          Resource: "*"
+      Topics:
+      - !Ref TopicSlack
+
+  FunctionSendSlackMessage:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: sendsns/
+      Handler: app.lambdaHandler
+      Runtime: nodejs12.x
+      Role: !GetAtt RoleSlackBot.Arn
+      Timeout: 60      
+  FunctionJitsiSlackBot:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: jitsictrl/
+      Handler: app.handler
+      Runtime: nodejs12.x
+      Role: !GetAtt RoleSlackBot.Arn
+      Timeout: 60
+
+  PermissionSendSlackMessage:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt FunctionSendSlackMessage.Arn
+      Principal: sns.amazonaws.com
+      SourceArn: !Sub arn:aws:sns:${AWS::Region}:${AWS::AccountId}:braintrust-slack
+  RoleSlackBot:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+              - lambda.amazonaws.com
+          Action: sts:AssumeRole
+      Policies:
+        - PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Action: logs:*
+                Effect: Allow
+                Resource: arn:aws:logs:*:*:*
+          PolicyName: lambda
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole

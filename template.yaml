@@ -5,6 +5,13 @@ Transform: AWS::Serverless-2016-10-31
 Description: 'Allow slack messages to be sent via SNS topic'
 
 Resources:
+  BrainTrustV2Api:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: Slackbot Proxy
+      ProtocolType: HTTP
+      Target: !Sub >-
+        arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FunctionSlackBot.Arn}/invocations
 
   BrainTrustApi:
     Type: 'AWS::ApiGateway::RestApi'
@@ -24,13 +31,13 @@ Resources:
     Properties:
       RestApiId: !Ref BrainTrustApi
       ResourceId: !Ref ProxyResource
-      HttpMethod: ANY
+      HttpMethod: POST
       AuthorizationType: NONE
       Integration:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub >-
-          arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FunctionJitsiSlackBot.Arn}/invocations
+          arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FunctionSlackBot.Arn}/invocations
 
   TopicSlack:
     Type: AWS::SNS::Topic
@@ -62,10 +69,10 @@ Resources:
       Runtime: nodejs12.x
       Role: !GetAtt RoleSlackBot.Arn
       Timeout: 60      
-  FunctionJitsiSlackBot:
+  FunctionSlackBot:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: jitsictrl/
+      CodeUri: slackbot/
       Handler: app.handler
       Runtime: nodejs12.x
       Role: !GetAtt RoleSlackBot.Arn
